@@ -5,7 +5,7 @@ Convert SF2 to SF3.
 ## CLI
 
 ```
-deno run -RW --allow-run \
+deno run -RWE --allow-run \
   cli.ts input.sf2 output.sf3 [bitsPerHz] [concurrency]
 ```
 
@@ -14,7 +14,7 @@ deno run -RW --allow-run \
 ### Deno
 
 ```
-deno install -fr -A npm:@marmooo/sf2-to-sf3 -g
+deno install -fr -RWE --allow-run npm:@marmooo/sf2-to-sf3 -g
 ```
 
 ### Node
