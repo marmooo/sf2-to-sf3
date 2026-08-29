@@ -11,5 +11,8 @@
     "@mediabunny/server": "npm:@mediabunny/server@^1.55.3",
     "mediabunny": "npm:mediabunny@^1.55.3"
   },
-  "allowScripts": ["npm:node-av"]
+  "allowScripts": ["npm:node-av"],
+  "compilerOptions": {
+    "lib": ["deno.window", "deno.unstable"]
+  }
 }

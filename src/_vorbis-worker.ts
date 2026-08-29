@@ -1,5 +1,5 @@
 // Encodes one PCM sample to Ogg Vorbis in an isolated process. Run as a
-// subprocess (see sf2-to-sf3.ts) so that each encode gets fresh native
+// subprocess (see encoder.ts) so that each encode gets fresh native
 // (FFmpeg) state; reusing one process for many encodes in a row has been
 // observed to crash the native bindings.
 //
@@ -10,12 +10,16 @@
 // first. This worker snaps to the nearest supported rate with simple
 // linear-interpolation resampling and reports the rate it actually used,
 // so the caller can rescale the sample's stored rate and loop points to
-// match (see SF3EncodeResult in ../src/Writer.ts).
+// match (see SF3EncodeResult in @marmooo/soundfont).
 //
 // argv: <sampleRate> <bitsPerHz>
 // stdin: raw s16 PCM (mono, little-endian)
 // stdout: 4-byte little-endian actual sample rate, followed by Ogg Vorbis
 //         bytes
+//
+// Runs under Deno (`deno run … _vorbis-worker.ts …`) and Node
+// (`node _vorbis-worker.js …`) using the same script.
+// Top-level await is avoided so dnt can emit CommonJS as well as ESM.
 import {
   AudioSample,
   AudioSampleSource,
@@ -57,49 +61,128 @@ function resampleLinear(
   return out;
 }
 
-const sourceRate = Number(Deno.args[0]);
-const bitsPerHz = Number(Deno.args[1]);
-const pcmBytes = await new Response(Deno.stdin.readable).bytes();
-const sourcePcm = new Int16Array(
-  pcmBytes.buffer,
-  pcmBytes.byteOffset,
-  pcmBytes.byteLength / 2,
-);
+function isDenoRuntime(): boolean {
+  // deno-lint-ignore no-explicit-any
+  const d = (globalThis as any).Deno;
+  return typeof d !== "undefined" && Array.isArray(d.args);
+}
 
-const targetRate = nearestSupportedRate(sourceRate);
-const pcm = resampleLinear(sourcePcm, sourceRate, targetRate);
+function getArgs(): string[] {
+  if (isDenoRuntime()) {
+    // deno-lint-ignore no-explicit-any
+    return (globalThis as any).Deno.args as string[];
+  }
+  // node: argv[0]=node, argv[1]=script, argv[2]=sampleRate, argv[3]=bitsPerHz
+  return process.argv.slice(2);
+}
 
-const output = new Output({
-  format: new OggOutputFormat(),
-  target: new BufferTarget(),
-});
-const audioSource = new AudioSampleSource({
-  codec: "vorbis",
-  // a bitrate proportional to the sample rate; libvorbis's setup rejects
-  // fixed high bitrates (like the QUALITY_HIGH preset) at low sample
-  // rates because they're not achievable for that Nyquist limit. It also
-  // rejects bitrates that are too high for a given rate regardless — keep
-  // bitsPerHz roughly in the 2-5 range (see sf2-to-sf3.ts).
-  bitrate: Math.round(targetRate * bitsPerHz),
-});
-output.addAudioTrack(audioSource);
-await output.start();
+async function readStream(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    total += value.byteLength;
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out;
+}
 
-const sample = new AudioSample({
-  data: pcm,
-  format: "s16",
-  numberOfChannels: 1,
-  sampleRate: targetRate,
-  timestamp: 0,
-});
-await audioSource.add(sample);
-sample.close();
-audioSource.close();
-await output.finalize();
+async function readStdin(): Promise<Uint8Array> {
+  if (isDenoRuntime()) {
+    // deno-lint-ignore no-explicit-any
+    const d = (globalThis as any).Deno;
+    // Avoid Response.bytes() — not in the DOM lib dnt uses for type-checking.
+    return await readStream(d.stdin.readable);
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
 
-const oggBytes = new Uint8Array(output.target.buffer!);
-const header = new Uint8Array(4);
-new DataView(header.buffer).setUint32(0, targetRate, true);
-await Deno.stdout.write(header);
-await Deno.stdout.write(oggBytes);
-Deno.exit(0);
+async function writeStdout(data: Uint8Array): Promise<void> {
+  if (isDenoRuntime()) {
+    // deno-lint-ignore no-explicit-any
+    const d = (globalThis as any).Deno;
+    await d.stdout.write(data);
+  } else {
+    await new Promise<void>((resolve, reject) => {
+      process.stdout.write(data, (err) => (err ? reject(err) : resolve()));
+    });
+  }
+}
+
+function exit(code: number): never {
+  if (isDenoRuntime()) {
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).Deno.exit(code);
+  }
+  process.exit(code);
+}
+
+async function main(): Promise<void> {
+  const [sourceRateArg, bitsPerHzArg] = getArgs();
+  const sourceRate = Number(sourceRateArg);
+  const bitsPerHz = Number(bitsPerHzArg);
+  const pcmBytes = await readStdin();
+  const sourcePcm = new Int16Array(
+    pcmBytes.buffer,
+    pcmBytes.byteOffset,
+    pcmBytes.byteLength / 2,
+  );
+
+  const targetRate = nearestSupportedRate(sourceRate);
+  const pcm = resampleLinear(sourcePcm, sourceRate, targetRate);
+
+  const output = new Output({
+    format: new OggOutputFormat(),
+    target: new BufferTarget(),
+  });
+  const audioSource = new AudioSampleSource({
+    codec: "vorbis",
+    // a bitrate proportional to the sample rate; libvorbis's setup rejects
+    // fixed high bitrates (like the QUALITY_HIGH preset) at low sample
+    // rates because they're not achievable for that Nyquist limit. It also
+    // rejects bitrates that are too high for a given rate regardless — keep
+    // bitsPerHz roughly in the 2-5 range (see encoder.ts).
+    bitrate: Math.round(targetRate * bitsPerHz),
+  });
+  output.addAudioTrack(audioSource);
+  await output.start();
+
+  const sample = new AudioSample({
+    data: pcm,
+    format: "s16",
+    numberOfChannels: 1,
+    sampleRate: targetRate,
+    timestamp: 0,
+  });
+  await audioSource.add(sample);
+  sample.close();
+  audioSource.close();
+  await output.finalize();
+
+  const oggBytes = new Uint8Array(output.target.buffer!);
+  const header = new Uint8Array(4);
+  new DataView(header.buffer).setUint32(0, targetRate, true);
+  await writeStdout(header);
+  await writeStdout(oggBytes);
+}
+
+main()
+  .then(() => exit(0))
+  .catch((err) => {
+    console.error(err);
+    exit(1);
+  });

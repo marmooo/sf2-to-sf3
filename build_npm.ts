@@ -5,6 +5,8 @@ await emptyDir("./npm");
 await build({
   entryPoints: [
     "./src/mod.ts",
+    // Emitted so the default encoder can spawn it under Node after dnt.
+    "./src/_vorbis-worker.ts",
     {
       kind: "bin",
       name: "sf2-to-sf3",
@@ -13,6 +15,8 @@ await build({
   ],
   outDir: "./npm",
   shims: {
+    // Still needed for cli.ts (Deno.args / readFileSync / writeFileSync / exit).
+    // encoder.ts no longer relies on Deno.Command (unsupported by the shim).
     deno: true,
   },
   package: {
