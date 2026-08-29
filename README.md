@@ -14,7 +14,7 @@ deno run -RWE --allow-run \
 ### Deno
 
 ```
-deno install -fr -RWE --allow-run npm:@marmooo/sf2-to-sf3 -g
+deno install -fr -RWE --allow-run -g npm:@marmooo/sf2-to-sf3 --name sf2-to-sf3
 ```
 
 ### Node
