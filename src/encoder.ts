@@ -32,13 +32,19 @@ function isDenoRuntime(): boolean {
 }
 
 function resolveWorkerPath(): string {
-  // Source is .ts under Deno; dnt emits .js for Node.
-  const tsUrl = new URL("./_vorbis-worker.ts", import.meta.url);
+  // Match this module's extension: source tree is .ts, dnt/npm output is .js.
+  // Do not key off isDenoRuntime() — Deno loading the npm package still needs .js.
+  const self = import.meta.url;
+  const workerRel = self.endsWith(".ts")
+    ? "./_vorbis-worker.ts"
+    : "./_vorbis-worker.js";
+  const workerUrl = new URL(workerRel, self);
+
   if (isDenoRuntime()) {
-    return tsUrl.href;
+    // deno run accepts a file URL
+    return workerUrl.href;
   }
-  const path = fileURLToPath(tsUrl);
-  return path.replace(/\.ts$/, ".js");
+  return fileURLToPath(workerUrl);
 }
 
 function writeStderr(data: Uint8Array): void {
