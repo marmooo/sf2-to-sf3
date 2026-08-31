@@ -17,8 +17,13 @@ export async function sf2ToSf3(
   soundFont: SoundFont,
   options: Sf2ToSf3Options = {},
 ): Promise<Uint8Array> {
+  const concurrency = options.concurrency;
   const encode = options.encode ??
-    createDefaultEncoder({ bitsPerHz: options.bitsPerHz });
+    createDefaultEncoder({
+      bitsPerHz: options.bitsPerHz,
+      // Align pool size with write() concurrency so workers stay busy.
+      poolSize: concurrency,
+    });
 
   if (!options.encode) {
     // A fresh `node_modules` (e.g. first run, or after cloning) has to be
@@ -34,5 +39,15 @@ export async function sf2ToSf3(
     await encode(new Int16Array(1), 44100);
   }
 
-  return write(soundFont, { concurrency: options.concurrency, encode });
+  try {
+    return await write(soundFont, { concurrency, encode });
+  } finally {
+    // Shut down pool workers when we own them.
+    if (
+      !options.encode &&
+      typeof (encode as { dispose?: () => void }).dispose === "function"
+    ) {
+      (encode as { dispose: () => void }).dispose();
+    }
+  }
 }

@@ -1,25 +1,24 @@
-// Encodes one PCM sample to Ogg Vorbis in an isolated process. Run as a
-// subprocess (see encoder.ts) so that each encode gets fresh native
-// (FFmpeg) state; reusing one process for many encodes in a row has been
-// observed to crash the native bindings.
+// Vorbis encode worker for @marmooo/sf2-to-sf3.
 //
-// The FFmpeg libvorbis encoder used by @mediabunny/server only accepts a
-// fixed set of sample rates (8000/11025/16000/22050/32000/44100/48000 Hz)
-// and rejects anything else outright, so soundfonts with other sample
-// rates (common in real-world SF2s like GeneralUser GS) need resampling
-// first. This worker snaps to the nearest supported rate with simple
-// linear-interpolation resampling and reports the rate it actually used,
-// so the caller can rescale the sample's stored rate and loop points to
-// match (see SF3EncodeResult in @marmooo/soundfont).
+// Two modes:
 //
-// argv: <sampleRate> <bitsPerHz>
-// stdin: raw s16 PCM (mono, little-endian)
-// stdout: 4-byte little-endian actual sample rate, followed by Ogg Vorbis
-//         bytes
+// 1) One-shot (legacy, argv: <sampleRate> <bitsPerHz>):
+//    stdin  → raw s16le mono PCM
+//    stdout → u32le actualSampleRate + Ogg Vorbis bytes
+//    process exits when done
 //
-// Runs under Deno (`deno run … _vorbis-worker.ts …`) and Node
-// (`node _vorbis-worker.js …`) using the same script.
-// Top-level await is avoided so dnt can emit CommonJS as well as ESM.
+// 2) Persistent pool (argv: "serve"):
+//    loop of length-prefixed requests so the parent can reuse the process
+//    (mediabunny / native bindings stay loaded — the expensive part).
+//    Request:  u32le pcmBytes | u32le sampleRate | u32le bitsPerHzMilli
+//              (bitsPerHzMilli = round(bitsPerHz * 1000)) + pcm
+//    Response: u32le actualSampleRate | u32le oggBytes | ogg
+//    On encode error the process exits non-zero; the parent respawns.
+//
+// Each encode still builds a fresh mediabunny Output / AudioSampleSource so
+// we do not reuse a single native encoder object across samples (that path
+// has been observed to crash). Reusing the *process* is fine and removes
+// Deno/Node + module load cost per sample.
 import {
   AudioSample,
   AudioSampleSource,
@@ -31,7 +30,6 @@ import { registerMediabunnyServer } from "@mediabunny/server";
 
 registerMediabunnyServer();
 
-// the only rates the FFmpeg libvorbis encoder reliably initializes at
 const SUPPORTED_RATES = [8000, 11025, 16000, 22050, 32000, 44100, 48000];
 
 function nearestSupportedRate(rate: number): number {
@@ -72,7 +70,6 @@ function getArgs(): string[] {
     // deno-lint-ignore no-explicit-any
     return (globalThis as any).Deno.args as string[];
   }
-  // node: argv[0]=node, argv[1]=script, argv[2]=sampleRate, argv[3]=bitsPerHz
   return process.argv.slice(2);
 }
 
@@ -97,12 +94,10 @@ async function readStream(
   return out;
 }
 
-async function readStdin(): Promise<Uint8Array> {
+async function readStdinAll(): Promise<Uint8Array> {
   if (isDenoRuntime()) {
     // deno-lint-ignore no-explicit-any
-    const d = (globalThis as any).Deno;
-    // Avoid Response.bytes() — not in the DOM lib dnt uses for type-checking.
-    return await readStream(d.stdin.readable);
+    return await readStream((globalThis as any).Deno.stdin.readable);
   }
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
@@ -114,8 +109,7 @@ async function readStdin(): Promise<Uint8Array> {
 async function writeStdout(data: Uint8Array): Promise<void> {
   if (isDenoRuntime()) {
     // deno-lint-ignore no-explicit-any
-    const d = (globalThis as any).Deno;
-    await d.stdout.write(data);
+    await (globalThis as any).Deno.stdout.write(data);
   } else {
     await new Promise<void>((resolve, reject) => {
       process.stdout.write(data, (err) => (err ? reject(err) : resolve()));
@@ -131,17 +125,11 @@ function exit(code: number): never {
   process.exit(code);
 }
 
-async function main(): Promise<void> {
-  const [sourceRateArg, bitsPerHzArg] = getArgs();
-  const sourceRate = Number(sourceRateArg);
-  const bitsPerHz = Number(bitsPerHzArg);
-  const pcmBytes = await readStdin();
-  const sourcePcm = new Int16Array(
-    pcmBytes.buffer,
-    pcmBytes.byteOffset,
-    pcmBytes.byteLength / 2,
-  );
-
+async function encodePcm(
+  sourcePcm: Int16Array,
+  sourceRate: number,
+  bitsPerHz: number,
+): Promise<{ data: Uint8Array; sampleRate: number }> {
   const targetRate = nearestSupportedRate(sourceRate);
   const pcm = resampleLinear(sourcePcm, sourceRate, targetRate);
 
@@ -151,11 +139,6 @@ async function main(): Promise<void> {
   });
   const audioSource = new AudioSampleSource({
     codec: "vorbis",
-    // a bitrate proportional to the sample rate; libvorbis's setup rejects
-    // fixed high bitrates (like the QUALITY_HIGH preset) at low sample
-    // rates because they're not achievable for that Nyquist limit. It also
-    // rejects bitrates that are too high for a given rate regardless — keep
-    // bitsPerHz roughly in the 2-5 range (see encoder.ts).
     bitrate: Math.round(targetRate * bitsPerHz),
   });
   output.addAudioTrack(audioSource);
@@ -173,11 +156,153 @@ async function main(): Promise<void> {
   audioSource.close();
   await output.finalize();
 
-  const oggBytes = new Uint8Array(output.target.buffer!);
-  const header = new Uint8Array(4);
-  new DataView(header.buffer).setUint32(0, targetRate, true);
-  await writeStdout(header);
-  await writeStdout(oggBytes);
+  return {
+    data: new Uint8Array(output.target.buffer!),
+    sampleRate: targetRate,
+  };
+}
+
+// ---- persistent mode: read exact N bytes from stdin ----
+
+class StdinReader {
+  private buf = new Uint8Array(0);
+  private ended = false;
+  private waiters: Array<() => void> = [];
+
+  constructor() {
+    if (isDenoRuntime()) {
+      this.pumpDeno();
+    } else {
+      this.pumpNode();
+    }
+  }
+
+  private notify() {
+    const waiters = this.waiters;
+    this.waiters = [];
+    for (const w of waiters) w();
+  }
+
+  private append(chunk: Uint8Array) {
+    const next = new Uint8Array(this.buf.length + chunk.length);
+    next.set(this.buf);
+    next.set(chunk, this.buf.length);
+    this.buf = next;
+    this.notify();
+  }
+
+  private async pumpDeno() {
+    // deno-lint-ignore no-explicit-any
+    const reader = (globalThis as any).Deno.stdin.readable.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        this.append(value);
+      }
+    } finally {
+      this.ended = true;
+      this.notify();
+    }
+  }
+
+  private pumpNode() {
+    process.stdin.on("data", (chunk: Buffer) => {
+      this.append(
+        new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+      );
+    });
+    process.stdin.on("end", () => {
+      this.ended = true;
+      this.notify();
+    });
+  }
+
+  async readExact(n: number): Promise<Uint8Array | null> {
+    while (this.buf.length < n) {
+      if (this.ended) {
+        if (this.buf.length === 0) return null;
+        throw new Error(
+          `stdin EOF with ${this.buf.length} bytes left, needed ${n}`,
+        );
+      }
+      await new Promise<void>((r) => this.waiters.push(r));
+    }
+    const out = this.buf.subarray(0, n);
+    this.buf = this.buf.subarray(n);
+    return out;
+  }
+}
+
+function u32le(buf: Uint8Array, offset = 0): number {
+  return new DataView(buf.buffer, buf.byteOffset + offset, 4).getUint32(
+    0,
+    true,
+  );
+}
+
+function putU32le(n: number): Uint8Array {
+  const b = new Uint8Array(4);
+  new DataView(b.buffer).setUint32(0, n, true);
+  return b;
+}
+
+async function serveLoop(): Promise<void> {
+  const stdin = new StdinReader();
+  while (true) {
+    const header = await stdin.readExact(12);
+    if (header === null) return; // clean EOF
+
+    const pcmBytes = u32le(header, 0);
+    const sourceRate = u32le(header, 4);
+    const bitsPerHzMilli = u32le(header, 8);
+    const bitsPerHz = bitsPerHzMilli / 1000;
+
+    const pcmRaw = await stdin.readExact(pcmBytes);
+    if (pcmRaw === null) throw new Error("stdin EOF mid-pcm");
+
+    const sourcePcm = new Int16Array(
+      pcmRaw.buffer,
+      pcmRaw.byteOffset,
+      pcmRaw.byteLength / 2,
+    );
+    const { data, sampleRate } = await encodePcm(
+      sourcePcm,
+      sourceRate,
+      bitsPerHz,
+    );
+
+    await writeStdout(putU32le(sampleRate));
+    await writeStdout(putU32le(data.byteLength));
+    await writeStdout(data);
+  }
+}
+
+async function oneShot(sourceRate: number, bitsPerHz: number): Promise<void> {
+  const pcmBytes = await readStdinAll();
+  const sourcePcm = new Int16Array(
+    pcmBytes.buffer,
+    pcmBytes.byteOffset,
+    pcmBytes.byteLength / 2,
+  );
+  const { data, sampleRate } = await encodePcm(
+    sourcePcm,
+    sourceRate,
+    bitsPerHz,
+  );
+  await writeStdout(putU32le(sampleRate));
+  await writeStdout(data);
+}
+
+async function main(): Promise<void> {
+  const args = getArgs();
+  if (args[0] === "serve") {
+    await serveLoop();
+    return;
+  }
+  const sourceRate = Number(args[0]);
+  const bitsPerHz = Number(args[1]);
+  await oneShot(sourceRate, bitsPerHz);
 }
 
 main()
