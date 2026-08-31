@@ -16,12 +16,11 @@ await build({
   outDir: "./npm",
   shims: {
     // Still needed for cli.ts (Deno.args / readFileSync / writeFileSync / exit).
-    // encoder.ts no longer relies on Deno.Command (unsupported by the shim).
     deno: true,
   },
   package: {
     name: "@marmooo/sf2-to-sf3",
-    version: "0.0.2",
+    version: "0.0.3",
     description: "Convert SF2 to SF3.",
     license: "MIT",
     repository: {
