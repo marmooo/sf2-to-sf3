@@ -23,6 +23,8 @@ export async function sf2ToSf3(
       bitsPerHz: options.bitsPerHz,
       // Align pool size with write() concurrency so workers stay busy.
       poolSize: concurrency,
+      maxUsesPerWorker: options.maxUsesPerWorker,
+      maxRetries: options.maxRetries,
     });
 
   if (!options.encode) {

@@ -108,8 +108,18 @@ async function readStdinAll(): Promise<Uint8Array> {
 
 async function writeStdout(data: Uint8Array): Promise<void> {
   if (isDenoRuntime()) {
+    // Deno.stdout.write() is not guaranteed to write the whole buffer in
+    // one call (same contract as POSIX write(2)) — it returns however
+    // many bytes it managed. A single await here silently dropped the
+    // tail of any response that didn't fit in one write, and the parent
+    // would then hang forever waiting for bytes that were never sent.
+    // Loop until the full buffer is flushed.
     // deno-lint-ignore no-explicit-any
-    await (globalThis as any).Deno.stdout.write(data);
+    const stdout = (globalThis as any).Deno.stdout;
+    let written = 0;
+    while (written < data.byteLength) {
+      written += await stdout.write(data.subarray(written));
+    }
   } else {
     await new Promise<void>((resolve, reject) => {
       process.stdout.write(data, (err) => (err ? reject(err) : resolve()));

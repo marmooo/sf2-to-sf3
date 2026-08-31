@@ -1,5 +1,6 @@
 {
   "name": "@marmooo/sf2-to-sf3",
+  "exports": "./src/mod.ts",
   "imports": {
     "@deno/dnt": "jsr:@deno/dnt@^0.43.2",
     "@marmooo/soundfont": "npm:@marmooo/soundfont@^0.3.0",
