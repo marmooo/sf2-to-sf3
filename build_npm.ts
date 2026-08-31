@@ -6,7 +6,7 @@ await build({
   entryPoints: [
     "./src/mod.ts",
     // Emitted so the default encoder can spawn it under Node after dnt.
-    "./src/_vorbis-worker.ts",
+    "./src/_wasm-encoder-worker.ts",
     {
       kind: "bin",
       name: "sf2-to-sf3",
@@ -29,6 +29,9 @@ await build({
     },
     bugs: {
       url: "https://github.com/marmooo/sf2-to-sf3/issues",
+    },
+    dependencies: {
+      "wasm-media-encoders": "^0.7.0",
     },
   },
   postBuild() {

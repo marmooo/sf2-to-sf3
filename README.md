@@ -5,16 +5,20 @@ Convert SF2 to SF3.
 ## CLI
 
 ```
-deno run -RWE --allow-run \
-  cli.ts input.sf2 output.sf3 [bitsPerHz] [concurrency]
+deno run -A --node-modules-dir=auto \
+  cli.ts input.sf2 output.sf3 [quality] [concurrency]
 ```
+
+`quality` is Vorbis VBR quality (−1..10, default 4).\
+`concurrency` is how many samples encode at once (default: hardwareConcurrency
+or 4).
 
 ## Installation
 
 ### Deno
 
 ```
-deno install -fr -RWE --allow-run -g npm:@marmooo/sf2-to-sf3 --name sf2-to-sf3
+deno install -fr -A --node-modules-dir=auto -g npm:@marmooo/sf2-to-sf3 --name sf2-to-sf3
 ```
 
 ### Node
@@ -40,19 +44,19 @@ Options:
 
 ```js
 await sf2ToSf3(soundFont, {
-  bitsPerHz: 4, // compression/quality — see src/encoder.ts
-  concurrency: 4, // samples encoded at once — forwarded to write()
+  quality: 4, // Vorbis VBR −1..10 — see src/encoder.ts
+  concurrency: 4, // samples encoded at once — also sizes the worker pool
   encode: myEncoder, // use your own SF3Encoder instead of the default
 });
 ```
 
-By default `sf2ToSf3()` shells out to `@mediabunny/server` (FFmpeg/libvorbis
-bindings) in a subprocess per sample — see `src/encoder.ts` and
-`src/_vorbis-worker.ts` for why a subprocess is used rather than calling
-mediabunny in-process. If you pass your own `encode`, none of that runs: no
-subprocess, no `node_modules`, no native bindings — e.g. in a browser you'd
-likely want to call mediabunny directly instead, since the subprocess workaround
-here is specific to running FFmpeg-backed encoders server-side.
+By default `sf2ToSf3()` encodes with
+[wasm-media-encoders](https://github.com/arseneyr/wasm-media-encoders)
+(libvorbis WASM) inside a pool of Workers / `worker_threads` — see
+`src/encoder.ts` and `src/_wasm-encoder-worker.ts`. No native FFmpeg/node-av
+bindings are required.
+
+If you pass your own `encode`, the worker pool is not started.
 
 ## License
 

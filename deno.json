@@ -1,15 +1,16 @@
 {
   "name": "@marmooo/sf2-to-sf3",
-  "exports": "./src/mod.ts",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./cli": "./cli.ts"
+  },
   "imports": {
     "@deno/dnt": "jsr:@deno/dnt@^0.43.2",
     "@marmooo/soundfont": "npm:@marmooo/soundfont@^0.3.0",
-    "@mediabunny/server": "npm:@mediabunny/server@^1.55.3",
-    "mediabunny": "npm:mediabunny@^1.55.3"
+    "wasm-media-encoders": "npm:wasm-media-encoders@^0.7.0"
   },
-  "allowScripts": ["npm:node-av"],
   "nodeModulesDir": "auto",
   "compilerOptions": {
-    "lib": ["deno.window", "deno.unstable"]
+    "lib": ["deno.window", "deno.unstable", "deno.worker"]
   }
 }
