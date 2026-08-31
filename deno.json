@@ -5,8 +5,11 @@
     "./cli": "./cli.ts"
   },
   "imports": {
+    "@audio/encode-ogg": "npm:@audio/encode-ogg@^1.2.2",
     "@deno/dnt": "jsr:@deno/dnt@^0.43.2",
     "@marmooo/soundfont": "npm:@marmooo/soundfont@^0.3.0",
+    "@mediabunny/server": "npm:@mediabunny/server@^1.55.4",
+    "mediabunny": "npm:mediabunny@^1.55.4",
     "wasm-media-encoders": "npm:wasm-media-encoders@^0.7.0"
   },
   "nodeModulesDir": "auto",

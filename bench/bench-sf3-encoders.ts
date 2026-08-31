@@ -14,9 +14,9 @@
  * quality: WASM VBR −1..10 (default 4). For mediabunny the same number is
  * used as bitsPerHz (different scale — sizes will differ).
  */
-import { parse } from "npm:@marmooo/soundfont";
+import { parse } from "@marmooo/soundfont";
+import type { SF3Encoder } from "@marmooo/soundfont";
 import { sf2ToSf3 } from "../src/mod.ts";
-import type { SF3Encoder } from "npm:@marmooo/soundfont";
 
 function toFloat32(pcm: Int16Array): Float32Array {
   const out = new Float32Array(pcm.length);
@@ -79,8 +79,8 @@ async function createMediabunnyEncoder(
     BufferTarget,
     OggOutputFormat,
     Output,
-  } = await import("npm:mediabunny");
-  const { registerMediabunnyServer } = await import("npm:@mediabunny/server");
+  } = await import("mediabunny");
+  const { registerMediabunnyServer } = await import("@mediabunny/server");
   registerMediabunnyServer();
 
   return async (pcm, sampleRate) => {
@@ -121,10 +121,10 @@ async function createMediabunnyEncoder(
 async function createWasmMainThreadEncoder(
   quality: number,
 ): Promise<SF3Encoder> {
-  const { createOggEncoder } = await import("npm:wasm-media-encoders");
+  const { createOggEncoder } = await import("wasm-media-encoders");
   const encoder = await createOggEncoder();
 
-  return async (pcm, sampleRate) => {
+  return (pcm, sampleRate) => {
     encoder.configure({
       sampleRate,
       channels: 1,
@@ -143,7 +143,7 @@ async function createWasmMainThreadEncoder(
 async function createAudioEncodeOggEncoder(
   quality: number,
 ): Promise<SF3Encoder> {
-  const create = (await import("npm:@audio/encode-ogg")).default as (
+  const create = (await import("@audio/encode-ogg")).default as (
     opts: { sampleRate: number; channels?: number; quality?: number },
   ) => Promise<{
     encode: (channelData: Float32Array[]) => Uint8Array;
