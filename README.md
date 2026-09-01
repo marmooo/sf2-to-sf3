@@ -5,8 +5,7 @@ Convert SF2 to SF3.
 ## CLI
 
 ```
-deno run -A --node-modules-dir=auto \
-  cli.ts input.sf2 output.sf3 [quality] [concurrency]
+sf2-to-sf3 input.sf2 output.sf3 [quality] [concurrency]
 ```
 
 `quality` is Vorbis VBR quality (−1..10, default 4).\
@@ -18,7 +17,7 @@ or 4).
 ### Deno
 
 ```
-deno install -fr -A --node-modules-dir=auto -g npm:@marmooo/sf2-to-sf3 --name sf2-to-sf3
+deno install -fr -RW -g npm:@marmooo/sf2-to-sf3 --name sf2-to-sf3
 ```
 
 ### Node
