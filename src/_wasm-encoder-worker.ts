@@ -14,8 +14,13 @@
 
 import { createOggEncoder, type WasmMediaEncoder } from "wasm-media-encoders";
 
-// deno-lint-ignore no-explicit-any
-const g = globalThis as any;
+type WorkerGlobal = typeof globalThis & {
+  Deno?: unknown;
+  postMessage?: (msg: unknown, transfer?: ArrayBuffer[]) => void;
+  onmessage?: ((ev: MessageEvent) => void) | null;
+};
+
+const g = globalThis as WorkerGlobal;
 const isNode = typeof g.Deno === "undefined" &&
   typeof process !== "undefined" &&
   Boolean(process.versions?.node);
@@ -76,15 +81,19 @@ function handle(
   }
 }
 
-// deno-lint-ignore no-explicit-any
-let nodeParentPort: any = null;
+type ParentPort = {
+  postMessage(msg: unknown, transfer?: ArrayBuffer[]): void;
+  on(event: "message", listener: (data: unknown) => void): unknown;
+};
+
+let nodeParentPort: ParentPort | null = null;
 
 function post(msg: unknown, transfer?: ArrayBuffer[]) {
   if (isNode) {
     nodeParentPort!.postMessage(msg, transfer ?? []);
   } else {
     // Avoid naming DedicatedWorkerGlobalScope (missing under dnt Node libs).
-    g.postMessage(msg, transfer ?? []);
+    g.postMessage!(msg, transfer ?? []);
   }
 }
 
@@ -94,7 +103,7 @@ async function boot(): Promise<void> {
   if (isNode) {
     const { parentPort } = await import("node:worker_threads");
     if (!parentPort) throw new Error("worker_threads parentPort missing");
-    nodeParentPort = parentPort;
+    nodeParentPort = parentPort as ParentPort;
     parentPort.on("message", (data) => {
       const res = handle(encoder, data);
       if ("ogg" in res) post(res, [res.ogg]);

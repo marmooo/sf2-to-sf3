@@ -25,9 +25,29 @@ export interface DefaultEncoderOptions {
   poolSize?: number;
 }
 
+/** Minimal shape shared by Deno's Worker and node:worker_threads.Worker. */
+type WorkerLike = {
+  postMessage(message: unknown, transfer?: ArrayBuffer[]): void;
+  terminate(): void;
+  // Deno
+  onmessage?: ((ev: { data: unknown }) => void) | null;
+  onerror?: ((err: { message?: string }) => void) | null;
+  // Node
+  on?(event: "message", listener: (data: unknown) => void): unknown;
+  on?(event: "error", listener: (err: Error) => void): unknown;
+};
+
+type DenoGlobal = {
+  Deno?: { execPath?: unknown };
+  navigator?: { hardwareConcurrency?: number };
+  Worker?: new (
+    scriptURL: string | URL,
+    options?: { type?: string },
+  ) => WorkerLike;
+};
+
 function isDenoRuntime(): boolean {
-  // deno-lint-ignore no-explicit-any
-  const d = (globalThis as any).Deno;
+  const d = (globalThis as DenoGlobal).Deno;
   return typeof d !== "undefined" && typeof d.execPath === "function";
 }
 
@@ -42,10 +62,7 @@ function resolveWorkerPath(): string {
 }
 
 function defaultPoolSize(): number {
-  // deno-lint-ignore no-explicit-any
-  const nav = (globalThis as any).navigator as
-    | { hardwareConcurrency?: number }
-    | undefined;
+  const nav = (globalThis as DenoGlobal).navigator;
   return typeof nav !== "undefined" && nav.hardwareConcurrency
     ? nav.hardwareConcurrency
     : 4;
@@ -57,11 +74,14 @@ type Pending = {
 };
 
 type Slot = {
-  // Deno Worker | node worker_threads.Worker — duck-typed
-  // deno-lint-ignore no-explicit-any
-  worker: any;
+  worker: WorkerLike;
   busy: boolean;
 };
+
+type WorkerReadyMsg = { ready: true };
+type WorkerOkMsg = { id: number; ogg: ArrayBuffer };
+type WorkerErrMsg = { id: number; error: string };
+type WorkerMsg = WorkerReadyMsg | WorkerOkMsg | WorkerErrMsg;
 
 /**
  * Creates an SF3Encoder backed by a pool of wasm-media-encoders workers.
@@ -108,8 +128,7 @@ export function createDefaultEncoder(
   }
 
   function onWorkerMessage(slot: Slot, msg: unknown) {
-    // deno-lint-ignore no-explicit-any
-    const m = msg as any;
+    const m = msg as WorkerMsg;
     if ("ready" in m && m.ready) {
       readyCount++;
       if (readyCount >= poolSize) readyResolve?.();
@@ -118,26 +137,29 @@ export function createDefaultEncoder(
     }
 
     if (!("id" in m)) return;
-    const p = pending.get(m.id as number);
+    const p = pending.get(m.id);
     if (!p) return;
-    pending.delete(m.id as number);
+    pending.delete(m.id);
     release(slot);
     if ("error" in m) p.reject(new Error(String(m.error)));
-    else p.resolve(new Uint8Array(m.ogg as ArrayBuffer));
+    else p.resolve(new Uint8Array(m.ogg));
   }
 
   function spawnOne(): Slot {
-    // deno-lint-ignore no-explicit-any
-    let worker: any;
+    let worker: WorkerLike;
     if (deno) {
       // Deno's module Worker. Read from globalThis so dnt typecheck (Node libs)
       // does not require the DOM Worker constructor.
-      // deno-lint-ignore no-explicit-any
-      const DenoWorker = (globalThis as any).Worker;
+      const DenoWorker = (globalThis as DenoGlobal).Worker;
+      if (!DenoWorker) {
+        throw new Error(
+          "globalThis.Worker is not available in this Deno runtime",
+        );
+      }
       worker = new DenoWorker(workerPath, { type: "module" });
     } else {
       // Node (npm build via dnt)
-      worker = new NodeWorker(workerPath);
+      worker = new NodeWorker(workerPath) as unknown as WorkerLike;
     }
 
     const slot: Slot = { worker, busy: true }; // busy until ready
@@ -150,8 +172,8 @@ export function createDefaultEncoder(
         release(slot);
       };
     } else {
-      worker.on("message", (data: unknown) => onWorkerMessage(slot, data));
-      worker.on("error", (err: Error) => {
+      worker.on!("message", (data: unknown) => onWorkerMessage(slot, data));
+      worker.on!("error", (err: Error) => {
         console.error("encoder worker error:", err.message);
         release(slot);
       });
