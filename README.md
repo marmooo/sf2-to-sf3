@@ -8,7 +8,7 @@ Convert SF2 to SF3.
 sf2-to-sf3 input.sf2 output.sf3 [quality] [concurrency]
 ```
 
-`quality` is Vorbis VBR quality (−1..10, default 4).\
+`quality` is Vorbis VBR quality (\[-1, 10\], default 4).\
 `concurrency` is how many samples encode at once (default: hardwareConcurrency
 or 4).
 
@@ -43,15 +43,15 @@ Options:
 
 ```js
 await sf2ToSf3(soundFont, {
-  quality: 4, // Vorbis VBR −1..10 — see src/encoder.ts
-  concurrency: 4, // samples encoded at once — also sizes the worker pool
+  quality: 4, // Vorbis VBR \[-1, 10\]: see src/encoder.ts
+  concurrency: 4, // samples encoded at once: also sizes the worker pool
   encode: myEncoder, // use your own SF3Encoder instead of the default
 });
 ```
 
 By default `sf2ToSf3()` encodes with
 [wasm-media-encoders](https://github.com/arseneyr/wasm-media-encoders)
-(libvorbis WASM) inside a pool of Workers / `worker_threads` — see
+(libvorbis WASM) inside a pool of Workers / `worker_threads`: see
 `src/encoder.ts` and `src/_wasm-encoder-worker.ts`. No native FFmpeg/node-av
 bindings are required.
 

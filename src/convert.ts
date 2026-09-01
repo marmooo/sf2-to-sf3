@@ -2,7 +2,7 @@ import { type SF3Encoder, type SoundFont, write } from "@marmooo/soundfont";
 import { createDefaultEncoder, type DefaultEncoderOptions } from "./encoder.ts";
 
 export interface Sf2ToSf3Options extends DefaultEncoderOptions {
-  // how many samples to encode concurrently — forwarded to write().
+  // how many samples to encode concurrently: forwarded to write().
   concurrency?: number;
   // override the default (wasm-media-encoders worker pool) encoder entirely.
   encode?: SF3Encoder;
@@ -26,7 +26,7 @@ export async function sf2ToSf3(
       encode,
     });
   } finally {
-    // Only dispose the pool we created — never a caller-supplied encode.
+    // Only dispose the pool we created: never a caller-supplied encode.
     if (!options.encode) {
       (encode as SF3Encoder & { dispose?: () => void }).dispose?.();
     }

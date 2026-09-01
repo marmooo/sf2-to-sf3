@@ -9,7 +9,7 @@
 //   boot: { ready: true }
 // pcm / ogg are transferred when possible.
 //
-// No top-level await — required so dnt can emit CommonJS/UMD for the npm
+// No top-level await: required so dnt can emit CommonJS/UMD for the npm
 // package. Encoder init + message wiring runs inside an async boot().
 
 import { createOggEncoder, type WasmMediaEncoder } from "wasm-media-encoders";

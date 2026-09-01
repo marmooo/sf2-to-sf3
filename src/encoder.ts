@@ -3,19 +3,19 @@
 // encodes use multiple CPU cores without sharing mutable WASM state.
 //
 // Workers:
-//   Deno → globalThis.Worker (module worker)
-//   Node → node:worker_threads
+//   Deno -> globalThis.Worker (module worker)
+//   Node -> node:worker_threads
 // Same worker script (_wasm-encoder-worker.ts / .js) handles both via a small
 // isNode branch.
 //
-// DOM globals (navigator, Worker, ErrorEvent, …) are accessed via globalThis
+// DOM globals (navigator, Worker, ErrorEvent, etc.) are accessed via globalThis
 // so @deno/dnt's Node-oriented typecheck does not require DOM lib types.
 import { fileURLToPath } from "node:url";
 import { Worker as NodeWorker } from "node:worker_threads";
 import type { SF3Encoder } from "@marmooo/soundfont";
 
 export interface DefaultEncoderOptions {
-  // Vorbis VBR quality passed to wasm-media-encoders (−1.0 .. 10.0).
+  // Vorbis VBR quality passed to wasm-media-encoders [-1, 10].
   // Defaults to 4. Higher = larger / better; lower = smaller / worse.
   // (Previous mediabunny path used bitsPerHz; this is a different scale.)
   quality?: number;
@@ -25,7 +25,7 @@ export interface DefaultEncoderOptions {
   poolSize?: number;
 }
 
-/** Minimal shape shared by Deno's Worker and node:worker_threads.Worker. */
+// Minimal shape shared by Deno's Worker and node:worker_threads.Worker.
 type WorkerLike = {
   postMessage(message: unknown, transfer?: ArrayBuffer[]): void;
   terminate(): void;
@@ -83,11 +83,9 @@ type WorkerOkMsg = { id: number; ogg: ArrayBuffer };
 type WorkerErrMsg = { id: number; error: string };
 type WorkerMsg = WorkerReadyMsg | WorkerOkMsg | WorkerErrMsg;
 
-/**
- * Creates an SF3Encoder backed by a pool of wasm-media-encoders workers.
- * Call `dispose()` when finished to terminate workers; otherwise they exit
- * with the parent process.
- */
+// Creates an SF3Encoder backed by a pool of wasm-media-encoders workers.
+// Call `dispose()` when finished to terminate workers; otherwise they exit
+// with the parent process.
 export function createDefaultEncoder(
   options: DefaultEncoderOptions = {},
 ): SF3Encoder & { dispose?: () => void } {
