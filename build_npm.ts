@@ -29,9 +29,6 @@ await build({
     bugs: {
       url: "https://github.com/marmooo/sf2-to-sf3/issues",
     },
-    dependencies: {
-      "wasm-media-encoders": "^0.7.0",
-    },
   },
   postBuild() {
     Deno.copyFileSync("LICENSE", "npm/LICENSE");
