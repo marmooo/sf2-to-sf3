@@ -15,7 +15,6 @@ await build({
   ],
   outDir: "./npm",
   shims: {
-    // Still needed for cli.ts (Deno.args / readFileSync / writeFileSync / exit).
     deno: true,
   },
   package: {
