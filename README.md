@@ -2,16 +2,6 @@
 
 Convert SF2 to SF3.
 
-## CLI
-
-```
-sf2-to-sf3 input.sf2 output.sf3 [quality] [concurrency]
-```
-
-`quality` is Vorbis VBR quality (\[-1, 10\], default 4).\
-`concurrency` is how many samples encode at once (default: hardwareConcurrency
-or 4).
-
 ## Installation
 
 ### Deno
@@ -26,7 +16,7 @@ deno install -fr -RW -g npm:@marmooo/sf2-to-sf3 --name sf2-to-sf3
 npm install @marmooo/sf2-to-sf3 -g
 ```
 
-## As a function
+## Usage
 
 ```js
 import { parse } from "@marmooo/soundfont";
@@ -43,7 +33,7 @@ Options:
 
 ```js
 await sf2ToSf3(soundFont, {
-  quality: 4, // Vorbis VBR \[-1, 10\]: see src/encoder.ts
+  quality: 4, // Vorbis VBR [-1, 10]: see src/encoder.ts
   concurrency: 4, // samples encoded at once: also sizes the worker pool
   encode: myEncoder, // use your own SF3Encoder instead of the default
 });
@@ -56,6 +46,16 @@ By default `sf2ToSf3()` encodes with
 bindings are required.
 
 If you pass your own `encode`, the worker pool is not started.
+
+### CLI
+
+```
+sf2-to-sf3 input.sf2 output.sf3 [quality] [concurrency]
+```
+
+`quality` is Vorbis VBR quality (\[-1, 10\], default 4).\
+`concurrency` is how many samples encode at once (default: hardwareConcurrency
+or 4).
 
 ## License
 
