@@ -12,6 +12,9 @@
 //   Node → node:worker_threads
 // Same worker script (_wasm-encoder-worker.ts / .js) handles both via a small
 // isNode branch.
+//
+// DOM globals (navigator, Worker, ErrorEvent, …) are accessed via globalThis
+// so @deno/dnt's Node-oriented typecheck does not require DOM lib types.
 import { fileURLToPath } from "node:url";
 import { Worker as NodeWorker } from "node:worker_threads";
 import type { SF3Encoder } from "@marmooo/soundfont";
@@ -44,8 +47,12 @@ function resolveWorkerPath(): string {
 }
 
 function defaultPoolSize(): number {
-  return typeof navigator !== "undefined" && navigator.hardwareConcurrency
-    ? navigator.hardwareConcurrency
+  // deno-lint-ignore no-explicit-any
+  const nav = (globalThis as any).navigator as
+    | { hardwareConcurrency?: number }
+    | undefined;
+  return typeof nav !== "undefined" && nav.hardwareConcurrency
+    ? nav.hardwareConcurrency
     : 4;
 }
 
@@ -100,36 +107,40 @@ export function createDefaultEncoder(
       free.busy = true;
       return Promise.resolve(free);
     }
-    return new Promise((resolve) => waiters.push(resolve));
+    return new Promise((resolve) => {
+      waiters.push(resolve);
+    });
   }
 
-  function onWorkerMessage(slot: Slot, data: unknown) {
-    const msg = data as
-      | { ready: true }
-      | { id: number; ogg: ArrayBuffer }
-      | { id: number; error: string };
-
-    if ("ready" in msg && msg.ready) {
+  function onWorkerMessage(slot: Slot, msg: unknown) {
+    // deno-lint-ignore no-explicit-any
+    const m = msg as any;
+    if ("ready" in m && m.ready) {
       readyCount++;
       if (readyCount >= poolSize) readyResolve?.();
       release(slot);
       return;
     }
 
-    if (!("id" in msg)) return;
-    const p = pending.get(msg.id);
+    if (!("id" in m)) return;
+    const p = pending.get(m.id as number);
     if (!p) return;
-    pending.delete(msg.id);
+    pending.delete(m.id as number);
     release(slot);
-    if ("error" in msg) p.reject(new Error(msg.error));
-    else p.resolve(new Uint8Array(msg.ogg));
+    if ("error" in m) p.reject(new Error(String(m.error)));
+    else p.resolve(new Uint8Array(m.ogg as ArrayBuffer));
   }
 
   function spawnOne(): Slot {
     // deno-lint-ignore no-explicit-any
     let worker: any;
     if (deno) {
-      worker = new Worker(workerPath, { type: "module" });
+      // Deno's module Worker. Read from globalThis so dnt typecheck (Node libs)
+      // does not require the DOM Worker constructor.
+      // deno-lint-ignore no-explicit-any
+      // deno-lint-ignore no-explicit-any
+      const DenoWorker = (globalThis as any).Worker;
+      worker = new DenoWorker(workerPath, { type: "module" });
     } else {
       // Node (npm build via dnt)
       worker = new NodeWorker(workerPath);
@@ -138,9 +149,10 @@ export function createDefaultEncoder(
     const slot: Slot = { worker, busy: true }; // busy until ready
 
     if (deno) {
-      worker.onmessage = (ev: MessageEvent) => onWorkerMessage(slot, ev.data);
-      worker.onerror = (err: ErrorEvent) => {
-        console.error("encoder worker error:", err.message);
+      worker.onmessage = (ev: { data: unknown }) =>
+        onWorkerMessage(slot, ev.data);
+      worker.onerror = (err: { message?: string }) => {
+        console.error("encoder worker error:", err.message ?? String(err));
         release(slot);
       };
     } else {
@@ -171,16 +183,22 @@ export function createDefaultEncoder(
       pcm.byteOffset,
       pcm.byteOffset + pcm.byteLength,
     );
+    // Ensure transfer list only contains ArrayBuffer (not SharedArrayBuffer).
+    const transferable: ArrayBuffer = copy instanceof ArrayBuffer
+      ? copy
+      : (() => {
+        const ab = new ArrayBuffer(pcm.byteLength);
+        new Uint8Array(ab).set(
+          new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength),
+        );
+        return ab;
+      })();
 
     return new Promise<Uint8Array>((resolve, reject) => {
       pending.set(id, { resolve, reject });
       try {
-        const payload = { id, pcm: copy, sampleRate, quality };
-        if (deno) {
-          slot.worker.postMessage(payload, [copy]);
-        } else {
-          slot.worker.postMessage(payload, [copy]);
-        }
+        const payload = { id, pcm: transferable, sampleRate, quality };
+        slot.worker.postMessage(payload, [transferable]);
       } catch (e) {
         pending.delete(id);
         release(slot);
@@ -193,8 +211,7 @@ export function createDefaultEncoder(
     disposed = true;
     for (const s of slots) {
       try {
-        if (deno) s.worker.terminate();
-        else s.worker.terminate();
+        s.worker.terminate();
       } catch {
         /* ignore */
       }

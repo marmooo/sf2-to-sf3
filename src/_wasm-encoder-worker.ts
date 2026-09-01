@@ -8,16 +8,17 @@
 //   res: { id, ogg: ArrayBuffer } | { id, error: string }
 //   boot: { ready: true }
 // pcm / ogg are transferred when possible.
+//
+// No top-level await — required so dnt can emit CommonJS/UMD for the npm
+// package. Encoder init + message wiring runs inside an async boot().
 
-import { createOggEncoder } from "wasm-media-encoders";
+import { createOggEncoder, type WasmMediaEncoder } from "wasm-media-encoders";
 
 // deno-lint-ignore no-explicit-any
 const g = globalThis as any;
 const isNode = typeof g.Deno === "undefined" &&
   typeof process !== "undefined" &&
   Boolean(process.versions?.node);
-
-const encoder = await createOggEncoder();
 
 function toFloat32(pcm: Int16Array): Float32Array {
   const out = new Float32Array(pcm.length);
@@ -37,7 +38,20 @@ function concat(chunks: Uint8Array[]): Uint8Array {
   return out;
 }
 
+/** Always produce a real ArrayBuffer suitable for the transfer list. */
+function toTransferableArrayBuffer(u8: Uint8Array): ArrayBuffer {
+  const sliced = u8.buffer.slice(
+    u8.byteOffset,
+    u8.byteOffset + u8.byteLength,
+  );
+  if (sliced instanceof ArrayBuffer) return sliced;
+  const copy = new ArrayBuffer(u8.byteLength);
+  new Uint8Array(copy).set(u8);
+  return copy;
+}
+
 function handle(
+  encoder: WasmMediaEncoder<"audio/ogg">,
   data: { id: number; pcm: ArrayBuffer; sampleRate: number; quality: number },
 ): { id: number; ogg: ArrayBuffer } | { id: number; error: string } {
   try {
@@ -53,11 +67,7 @@ function handle(
     const b = encoder.finalize();
     if (b.length) parts.push(b.slice());
     const ogg = concat(parts);
-    const buf = ogg.buffer.slice(
-      ogg.byteOffset,
-      ogg.byteOffset + ogg.byteLength,
-    );
-    return { id: data.id, ogg: buf };
+    return { id: data.id, ogg: toTransferableArrayBuffer(ogg) };
   } catch (e) {
     return {
       id: data.id,
@@ -66,33 +76,48 @@ function handle(
   }
 }
 
-function post(msg: unknown, transfer?: ArrayBuffer[]) {
-  if (isNode) {
-    // set in boot below
-    nodeParentPort!.postMessage(msg, transfer ?? []);
-  } else {
-    (g as DedicatedWorkerGlobalScope).postMessage(msg, transfer ?? []);
-  }
-}
-
 // deno-lint-ignore no-explicit-any
 let nodeParentPort: any = null;
 
-if (isNode) {
-  const { parentPort } = await import("node:worker_threads");
-  if (!parentPort) throw new Error("worker_threads parentPort missing");
-  nodeParentPort = parentPort;
-  parentPort.on("message", (data) => {
-    const res = handle(data);
-    if ("ogg" in res) post(res, [res.ogg]);
-    else post(res);
-  });
-  post({ ready: true });
-} else {
-  g.onmessage = (ev: MessageEvent) => {
-    const res = handle(ev.data);
-    if ("ogg" in res) post(res, [res.ogg]);
-    else post(res);
-  };
+function post(msg: unknown, transfer?: ArrayBuffer[]) {
+  if (isNode) {
+    nodeParentPort!.postMessage(msg, transfer ?? []);
+  } else {
+    // Avoid naming DedicatedWorkerGlobalScope (missing under dnt Node libs).
+    g.postMessage(msg, transfer ?? []);
+  }
+}
+
+async function boot(): Promise<void> {
+  const encoder = await createOggEncoder();
+
+  if (isNode) {
+    const { parentPort } = await import("node:worker_threads");
+    if (!parentPort) throw new Error("worker_threads parentPort missing");
+    nodeParentPort = parentPort;
+    parentPort.on("message", (data) => {
+      const res = handle(encoder, data);
+      if ("ogg" in res) post(res, [res.ogg]);
+      else post(res);
+    });
+  } else {
+    g.onmessage = (ev: MessageEvent) => {
+      const res = handle(encoder, ev.data);
+      if ("ogg" in res) post(res, [res.ogg]);
+      else post(res);
+    };
+  }
+
+  // Signal readiness only after encoder is initialized and handlers are wired.
   post({ ready: true });
 }
+
+boot().catch((e) => {
+  const msg = e instanceof Error ? e.message : String(e);
+  try {
+    post({ error: `worker boot failed: ${msg}` });
+  } catch {
+    // parentPort may not be available yet
+  }
+  throw e;
+});
