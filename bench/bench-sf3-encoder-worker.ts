@@ -1,13 +1,11 @@
 /// <reference lib="deno.worker" />
-/**
- * Worker side: one dedicated wasm-media-encoders instance per Worker.
- * Protocol (main ↔ worker):
- *   req:  { id: number, pcm: ArrayBuffer, sampleRate: number, quality: number }
- *   res:  { id: number, ogg: ArrayBuffer } | { id: number, error: string }
- * pcm / ogg are transferred (zero-copy).
- *
- * No top-level await (keeps the module CJS-friendly if ever bundled).
- */
+// Worker side: one dedicated wasm-media-encoders instance per Worker.
+// Protocol (main ↔ worker):
+//   req:  { id: number, pcm: ArrayBuffer, sampleRate: number, quality: number }
+//   res:  { id: number, ogg: ArrayBuffer } | { id: number, error: string }
+// pcm / ogg are transferred (zero-copy).
+//
+// No top-level await (keeps the module CJS-friendly if ever bundled).
 import { createOggEncoder } from "wasm-media-encoders";
 import type { WasmMediaEncoder } from "wasm-media-encoders";
 
@@ -29,7 +27,7 @@ function concat(chunks: Uint8Array[]): Uint8Array {
   return out;
 }
 
-/** Ensure we always hand postMessage a real ArrayBuffer (not SharedArrayBuffer). */
+// Ensure we always hand postMessage a real ArrayBuffer (not SharedArrayBuffer).
 function toTransferableArrayBuffer(u8: Uint8Array): ArrayBuffer {
   const sliced = u8.buffer.slice(
     u8.byteOffset,

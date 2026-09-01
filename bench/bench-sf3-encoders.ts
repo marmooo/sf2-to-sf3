@@ -1,18 +1,16 @@
-/**
- * SF2→SF3 encoder benchmark.
- *
- * Compares:
- *   1. mediabunny (in-process)
- *   2. wasm-media-encoders (worker pool) — package default
- *   3. wasm-media-encoders (main-thread, 1 instance)
- *   4. @audio/encode-ogg (main-thread, create/free per sample)
- *
- * Usage (same order as cli.ts):
- *   deno run -A --node-modules-dir=auto bench-sf3-encoders.ts <input.sf2> [quality] [concurrency]
- *
- * quality: WASM VBR −1..10 (default 4). For mediabunny the same number is
- * used as bitsPerHz (different scale — sizes will differ).
- */
+// SF2→SF3 encoder benchmark.
+//
+// Compares:
+//   1. mediabunny (in-process)
+//   2. wasm-media-encoders (worker pool) — package default
+//   3. wasm-media-encoders (main-thread, 1 instance)
+//   4. @audio/encode-ogg (main-thread, create/free per sample)
+//
+// Usage (same order as cli.ts):
+//   deno run -A --node-modules-dir=auto bench-sf3-encoders.ts <input.sf2> [quality] [concurrency]
+//
+// quality: WASM VBR −1..10 (default 4). For mediabunny the same number is
+// used as bitsPerHz (different scale — sizes will differ).
 import { parse } from "@marmooo/soundfont";
 import type { SF3Encoder } from "@marmooo/soundfont";
 import { sf2ToSf3 } from "../src/mod.ts";
@@ -64,10 +62,8 @@ function resampleLinear(
   return out;
 }
 
-/**
- * mediabunny path (in-process).
- * Returns { data, sampleRate } when resampling changes the rate.
- */
+// mediabunny path (in-process).
+// Returns { data, sampleRate } when resampling changes the rate.
 async function createMediabunnyEncoder(
   bitsPerHz: number,
 ): Promise<SF3Encoder> {
