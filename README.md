@@ -41,7 +41,7 @@ await sf2ToSf3(soundFont, {
 
 By default `sf2ToSf3()` encodes with
 [wasm-media-encoders](https://github.com/arseneyr/wasm-media-encoders)
-(libvorbis WASM) inside a pool of Workers / `worker_threads`: see
+(libvorbis WASM) inside a pool of Workers / `worker_threads` - see
 `src/encoder.ts` and `src/_wasm-encoder-worker.ts`. No native FFmpeg/node-av
 bindings are required.
 
