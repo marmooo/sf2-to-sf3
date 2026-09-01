@@ -2,11 +2,6 @@
 // Web Workers / worker_threads. One encoder instance per worker so concurrent
 // encodes use multiple CPU cores without sharing mutable WASM state.
 //
-// Why not mediabunny/@mediabunny/server (node-av)?
-//   Native bindings were crash-prone (SIGSEGV after a few encodes) and process
-//   spawn + IPC overhead dominated. Benchmarks on real SF2s showed
-//   wasm-media-encoders ~6–10× faster with stable multi-core scaling.
-//
 // Workers:
 //   Deno → globalThis.Worker (module worker)
 //   Node → node:worker_threads
@@ -137,7 +132,6 @@ export function createDefaultEncoder(
     if (deno) {
       // Deno's module Worker. Read from globalThis so dnt typecheck (Node libs)
       // does not require the DOM Worker constructor.
-      // deno-lint-ignore no-explicit-any
       // deno-lint-ignore no-explicit-any
       const DenoWorker = (globalThis as any).Worker;
       worker = new DenoWorker(workerPath, { type: "module" });

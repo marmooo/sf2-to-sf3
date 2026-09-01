@@ -1,9 +1,8 @@
-#!/usr/bin/env -S deno run -A --node-modules-dir=auto
 /**
  * SF2→SF3 encoder benchmark.
  *
  * Compares:
- *   1. mediabunny (in-process; legacy reference — may be slow / crash-prone)
+ *   1. mediabunny (in-process)
  *   2. wasm-media-encoders (worker pool) — package default
  *   3. wasm-media-encoders (main-thread, 1 instance)
  *   4. @audio/encode-ogg (main-thread, create/free per sample)
@@ -66,8 +65,7 @@ function resampleLinear(
 }
 
 /**
- * Legacy mediabunny path (in-process). Kept for comparison only.
- * Not multi-process; concurrent encodes share one process and may stress node-av.
+ * mediabunny path (in-process).
  * Returns { data, sampleRate } when resampling changes the rate.
  */
 async function createMediabunnyEncoder(
