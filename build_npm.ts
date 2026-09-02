@@ -5,8 +5,6 @@ await emptyDir("./npm");
 await build({
   entryPoints: [
     "./src/mod.ts",
-    // Emitted so the default encoder can spawn it under Node after dnt.
-    "./src/_wasm-encoder-worker.ts",
     {
       kind: "bin",
       name: "sf2-to-sf3",
@@ -29,6 +27,10 @@ await build({
     bugs: {
       url: "https://github.com/marmooo/sf2-to-sf3/issues",
     },
+    // The default Vorbis codec (and its worker) now lives in
+    // @marmooo/sf3-codec; this package only defines functions at the top
+    // level, so it's safe for bundlers to tree-shake unused parts.
+    sideEffects: false,
   },
   postBuild() {
     Deno.copyFileSync("LICENSE", "npm/LICENSE");

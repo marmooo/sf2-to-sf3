@@ -8,11 +8,14 @@
     "@audio/encode-ogg": "npm:@audio/encode-ogg@^1.2.2",
     "@deno/dnt": "jsr:@deno/dnt@^0.43.2",
     "@marmooo/soundfont": "npm:@marmooo/soundfont@^0.3.2",
+    "@marmooo/sf3-codec": "npm:@marmooo/sf3-codec@^0.0.1",
     "@mediabunny/server": "npm:@mediabunny/server@^1.55.4",
+    "@wasm-audio-decoders/ogg-vorbis": "npm:@wasm-audio-decoders/ogg-vorbis@^0.1.20",
     "mediabunny": "npm:mediabunny@^1.55.4",
     "wasm-media-encoders": "npm:wasm-media-encoders@^0.7.0"
   },
   "nodeModulesDir": "auto",
+  "approveScripts": ["node-av"],
   "compilerOptions": {
     "lib": ["deno.window", "deno.unstable", "deno.worker"]
   }
