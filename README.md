@@ -50,12 +50,20 @@ If you pass your own `encode`, the worker pool is not started.
 ### CLI
 
 ```
-sf2-to-sf3 input.sf2 output.sf3 [quality] [concurrency]
-```
+Usage: sf2-to-sf3 <input.sf2|sf3> <output.sf3> [options]
 
-`quality` is Vorbis VBR quality (\[-1, 10\], default 4).\
-`concurrency` is how many samples encode at once (default: hardwareConcurrency
-or 4).
+Convert SF2 to SF3.
+
+Options:
+  -V, --version      show version
+  -q, --quality      Vorbis VBR quality ([-1, 10], default 4)
+  -c, --concurrency  max parallel sample encodes
+                     default: hardwareConcurrency or 4
+  -r, --recompress   re-encode samples that are already compressed
+                     (SF3 input), instead of copying them through as-is
+                     default: false
+  -h, --help         show this help
+```
 
 ## License
 
