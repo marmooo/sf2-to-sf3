@@ -18,6 +18,8 @@ const outputPath = args._[1] as string;
 if (!inputPath || !outputPath) {
   console.error(`Usage: sf2-to-sf3 <input.sf2|sf3> <output.sf3> [options]
 
+Convert SF2 to SF3.
+
 Options:
   -q, --quality      Vorbis VBR quality ([-1, 10], default 4)
   -c, --concurrency  max parallel sample encodes
