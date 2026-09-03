@@ -2,7 +2,7 @@ import { parse } from "@marmooo/soundfont";
 import { parseArgs } from "@std/cli";
 import { sf2ToSf3 } from "./src/mod.ts";
 
-const VERSION = "0.0.3";
+const VERSION = "0.0.5";
 
 const args = parseArgs(Deno.args, {
   string: ["quality", "concurrency"],
