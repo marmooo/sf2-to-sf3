@@ -59,8 +59,8 @@ Options:
   -q, --quality      Vorbis VBR quality ([-1, 10], default 4)
   -c, --concurrency  max parallel sample encodes
                        default: hardwareConcurrency or 4
-  -r, --recompress   re-encode samples that are already compressed
-                     (SF3 input), instead of copying them through as-is
+  -r, --recompress   re-encode already-compressed (SF3) samples at
+                     --quality instead of copying them through as-is
                        default: false
   -h, --help         display help for command
 ```
