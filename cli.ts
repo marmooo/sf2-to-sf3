@@ -2,31 +2,49 @@ import { parse } from "@marmooo/soundfont";
 import { parseArgs } from "@std/cli";
 import { sf2ToSf3 } from "./src/mod.ts";
 
+const VERSION = "0.0.3";
+
 const args = parseArgs(Deno.args, {
   string: ["quality", "concurrency"],
-  boolean: ["recompress"],
+  boolean: ["recompress", "version", "help"],
   alias: {
+    V: "version",
     q: "quality",
     c: "concurrency",
     r: "recompress",
+    h: "help",
   },
 });
+
+const usage = `Usage: sf2-to-sf3 <input.sf2|sf3> <output.sf3> [options]
+
+Convert SF2 to SF3.
+
+Options:
+  -V, --version      show version
+  -q, --quality      Vorbis VBR quality ([-1, 10], default 4)
+  -c, --concurrency  max parallel sample encodes
+                     default: hardwareConcurrency or 4
+  -r, --recompress   re-encode samples that are already compressed
+                     (SF3 input), instead of copying them through as-is
+                     default: false
+  -h, --help         show this help`;
+
+if (args.version) {
+  console.log(VERSION);
+  Deno.exit(0);
+}
+
+if (args.help) {
+  console.log(usage);
+  Deno.exit(0);
+}
 
 const inputPath = args._[0] as string;
 const outputPath = args._[1] as string;
 
 if (!inputPath || !outputPath) {
-  console.error(`Usage: sf2-to-sf3 <input.sf2|sf3> <output.sf3> [options]
-
-Convert SF2 to SF3.
-
-Options:
-  -q, --quality      Vorbis VBR quality ([-1, 10], default 4)
-  -c, --concurrency  max parallel sample encodes
-                       default: hardwareConcurrency or 4
-  -r, --recompress   re-encode samples that are already compressed
-                     (SF3 input), instead of copying them through as-is
-                       default: false`);
+  console.error(usage);
   Deno.exit(1);
 }
 
