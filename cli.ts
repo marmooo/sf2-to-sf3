@@ -23,7 +23,7 @@ Options:
   -c, --concurrency  max parallel sample encodes
                        default: hardwareConcurrency or 4
   -r, --recompress   re-encode samples that are already compressed
-                       (SF3 input), instead of copying them through as-is
+                     (SF3 input), instead of copying them through as-is
                        default: false`);
   Deno.exit(1);
 }
