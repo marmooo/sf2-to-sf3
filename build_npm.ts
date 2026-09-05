@@ -17,7 +17,7 @@ await build({
   },
   package: {
     name: "@marmooo/sf2-to-sf3",
-    version: "0.0.5",
+    version: "0.0.6",
     description: "Convert SF2 to SF3.",
     license: "MIT",
     repository: {
